@@ -4252,6 +4252,7 @@ summary:focus-visible {
 }
 
 /* The Leaflet canvas and ticket panel share space so attribution stays visible. */
+body:has(.map-page) { min-width: 0; }
 .map-page { flex: none; padding: 12px; overflow: visible; display: grid; gap: 12px; }
 .map-page.with-detail { grid-template-columns: minmax(0, 1fr) 360px; }
 .integrated-map { position: relative; min-width: 0; height: max(600px, calc(100dvh - 98px)); display: flex; flex-direction: column; }
@@ -4274,9 +4275,9 @@ summary:focus-visible {
 }
 @media (max-width: 800px) {
   .map-page { padding: 10px 10px calc(88px + env(safe-area-inset-bottom)); }
-  /* The whole map, with its search box and controls, fits one screen between
-     the header and the tab bar; the ticket's card is a scroll below. */
-  .integrated-map { height: max(480px, calc(100dvh - var(--header-height, 68px) - 64px - 22px - env(safe-area-inset-bottom))); }
+  /* Fill the screen between the header and tab bar, growing when controls
+     wrap or the legend opens; the ticket's card stays below the whole map. */
+  .integrated-map { height: auto; min-height: max(320px, calc(100dvh - var(--header-height, 68px) - 64px - 22px - env(safe-area-inset-bottom))); }
   .map-page .ticket-detail { height: auto; }
   .ticket-row { grid-template-columns: 72px minmax(0, 1fr) 44px; }
   .ticket-title-line { flex-wrap: wrap; }

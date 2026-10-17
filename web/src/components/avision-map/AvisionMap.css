@@ -170,7 +170,8 @@
 }
 .avision-map-views button,
 .avision-map-style button,
-.avision-map-sources {
+.avision-map-sources,
+.avision-map-fit-reports {
   padding: 9px 12px;
   border: 1px solid #334155;
   border-radius: 7px;
@@ -178,7 +179,8 @@
   white-space: nowrap;
 }
 .avision-map-views button:hover,
-.avision-map-sources:hover {
+.avision-map-sources:hover,
+.avision-map-fit-reports:hover:enabled {
   background: #E5EEE9;
 }
 .avision-map-canvas {
@@ -187,6 +189,19 @@
   min-height: 160px;
   min-width: 0;
   z-index: 0;
+  scroll-margin-block: 12px;
+}
+.avision-map-widget .avision-map-fit-reports {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 800;
+  min-height: 44px;
+  max-width: calc(100% - 64px);
+  padding: 6px 10px;
+  font-size: 13px;
+  white-space: normal;
+  box-shadow: 0 2px 6px #18364b44;
 }
 .avision-map-widget .avision-leaflet-map {
   height: 100%;
@@ -219,6 +234,11 @@
   color: var(--avision-ink);
   background: #fff;
   border-radius: 5px;
+}
+.avision-map-widget .avision-report-tooltip {
+  width: max-content;
+  max-width: min(320px, calc(100vw - 64px));
+  white-space: normal;
 }
 .avision-map-widget .avision-station-pin {
   background: #FDBE43;
@@ -367,6 +387,11 @@
   width: 36px;
   font-size: 24px;
 }
+@media (max-width: 800px) {
+  .avision-map-canvas {
+    scroll-margin-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
 @media (max-width: 640px) {
   .avision-map-toolbar {
     flex-direction: column;
@@ -503,6 +528,7 @@
   .avision-map-results,
   .avision-map-results button,
   .avision-map-views button,
+  .avision-map-fit-reports,
   .avision-map-style button,
   .avision-map-sources,
   .avision-map-layer-menu summary,
@@ -519,6 +545,7 @@
   .avision-map-results button:hover,
   .avision-map-results .avision-search-active,
   .avision-map-views button:hover,
+  .avision-map-fit-reports:hover:enabled,
   .avision-map-sources:hover,
   .avision-map-layer-menu summary span,
   .avision-map-dialog-heading button
@@ -579,7 +606,7 @@
 }
 
 :root[data-theme="dark"] :is(.avision-map-search > input,
-  .avision-map-views button, .avision-map-style button,
+  .avision-map-views button, .avision-map-fit-reports, .avision-map-style button,
   .avision-map-sources, .avision-map-layer-menu summary) {
   border-color: var(--control-line);
 }

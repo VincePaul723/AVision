@@ -10,7 +10,13 @@ import {
   useMapEvents,
 } from "react-leaflet"
 
-import { divIcon, type Marker as LeafletMarker } from "leaflet"
+import {
+  divIcon,
+  latLngBounds,
+  point,
+  type Marker as LeafletMarker,
+  type Tooltip as LeafletTooltip,
+} from "leaflet"
 
 import {
   ATLANTA_VIEW,
@@ -119,6 +125,8 @@ type Focus = {
   bounds?: MapBounds
 
   point?: MapCoordinates
+
+  reportBounds?: boolean
 }
 
 type SearchResult = {
@@ -156,6 +164,31 @@ function IssueMarker({
   onSelect?: AvisionMapProps["onMarkerSelect"]
 }) {
   const ref = useRef<LeafletMarker>(null)
+
+  const tooltipRef = useRef<LeafletTooltip>(null)
+
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+
+  const map = useMap()
+
+  // Measure after the tooltip's React content is rendered, and keep its anchor.
+  useEffect(() => {
+    const tooltip = tooltipRef.current
+    const control = map.getContainer().parentElement
+      ?.querySelector<HTMLElement>(".avision-map-fit-reports")
+    if (!tooltipOpen || !tooltip || !control) return
+
+    const button = control.getBoundingClientRect()
+    for (const direction of ["auto", "bottom", "left", "top", "right"] as const) {
+      tooltip.options.direction = direction
+      tooltip.update()
+      const box = tooltip.getElement()?.getBoundingClientRect()
+      if (
+        !box || box.right <= button.left || box.left >= button.right ||
+        box.bottom <= button.top || box.top >= button.bottom
+      ) break
+    }
+  })
 
   const owner =
     ISSUE_OWNERS.find((item) => item.id === marker.owner) ??
@@ -228,7 +261,14 @@ function IssueMarker({
         },
       }}
     >
-      <Tooltip>
+      <Tooltip
+        ref={tooltipRef}
+        className="avision-report-tooltip"
+        eventHandlers={{
+          add: () => setTooltipOpen(true),
+          remove: () => setTooltipOpen(false),
+        }}
+      >
         <strong>{marker.label}</strong>
         <br />
         {owner.label}
@@ -258,6 +298,59 @@ function MapBehavior({
   // in one step instead of being stopped part-way.
   const heading = useRef<Focus | null>(null)
 
+  function fitBounds(target: Focus, animate: boolean) {
+    if (!target.bounds) return
+
+    if (!target.reportBounds) {
+      map.setMinZoom(10)
+      map.fitBounds(target.bounds, { padding: [24, 24], maxZoom: 16, animate })
+      return
+    }
+
+    const bounds = latLngBounds(target.bounds)
+    const size = map.getSize()
+    const canvas = map.getContainer().getBoundingClientRect()
+    const header = document.querySelector(".app-header")?.getBoundingClientRect()
+    const navigation = document.querySelector(".mobile-nav")?.getBoundingClientRect()
+    const top = Math.max(0, (header?.bottom ?? 0) - canvas.top)
+    const bottom = Math.max(0, canvas.bottom - Math.min(
+      window.innerHeight, navigation?.height ? navigation.top : window.innerHeight,
+    ))
+    const control = map.getContainer().parentElement
+      ?.querySelector<HTMLElement>(".avision-map-fit-reports")
+
+    // Reserve space above or beside the button, whichever allows a closer fit.
+    const span = map.project(bounds.getNorthEast(), 0)
+      .subtract(map.project(bounds.getSouthWest(), 0))
+    const choices = [
+      {
+        topLeft: point(68, Math.max(top + 32,
+          control ? control.offsetTop + control.offsetHeight + 32 : 32)),
+        bottomRight: point(32, bottom + 48),
+      },
+      {
+        topLeft: point(68, top + 32),
+        bottomRight: point(control ? size.x - control.offsetLeft + 32 : 32, bottom + 48),
+      },
+    ].map((padding) => {
+      const available = size.subtract(padding.topLeft).subtract(padding.bottomRight)
+      const scale = Math.min(available.x / Math.abs(span.x), available.y / Math.abs(span.y))
+      return {
+        ...padding,
+        zoom: Math.max(0, Math.min(17, Math.floor(map.getScaleZoom(scale, 0)))),
+      }
+    })
+    const fit = choices[1].zoom > choices[0].zoom ? choices[1] : choices[0]
+
+    map.setMinZoom(Math.min(10, fit.zoom))
+    map.fitBounds(bounds, {
+      paddingTopLeft: fit.topLeft,
+      paddingBottomRight: fit.bottomRight,
+      maxZoom: 17,
+      animate,
+    })
+  }
+
   useEffect(() => {
     map.invalidateSize()
 
@@ -266,13 +359,14 @@ function MapBehavior({
 
     heading.current = focus
 
-    if (focus.bounds)
-      map.fitBounds(focus.bounds, { padding: [24, 24], maxZoom: 16, animate })
+    if (focus.bounds) fitBounds(focus, animate)
 
-    if (focus.point)
+    if (focus.point) {
+      map.setMinZoom(10)
       map.setView([focus.point.latitude, focus.point.longitude], 17, {
         animate,
       })
+    }
   }, [focus, map])
 
   useEffect(() => {
@@ -287,12 +381,7 @@ function MapBehavior({
         map.setView([target.point.latitude, target.point.longitude], 17, {
           animate: false,
         })
-      else if (target?.bounds)
-        map.fitBounds(target.bounds, {
-          padding: [24, 24],
-          maxZoom: 16,
-          animate: false,
-        })
+      else if (target?.bounds) fitBounds(target, false)
       else map.setView(center, map.getZoom(), { animate: false })
     })
 
@@ -440,6 +529,8 @@ export default function AvisionMap({
     useState<string | null>(null)
 
   const search = useRef<HTMLDivElement>(null)
+
+  const mapCanvas = useRef<HTMLDivElement>(null)
 
   const base = dataUrl.replace(/\/$/, "")
 
@@ -618,6 +709,31 @@ export default function AvisionMap({
   )
 
   const visibleMarkers = markers.filter(validPoint)
+
+  function fitReports() {
+    if (!visibleMarkers.length) return
+
+    // Fit the canvas the person can actually see, including on short screens.
+    mapCanvas.current?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "instant",
+    })
+
+    setSelectedNeighborhood(null)
+
+    const bounds = latLngBounds(
+      visibleMarkers.map((marker) => [marker.latitude, marker.longitude]),
+    )
+
+    setFocus({
+      bounds: [
+        [bounds.getSouth(), bounds.getWest()],
+        [bounds.getNorth(), bounds.getEast()],
+      ],
+      reportBounds: true,
+    })
+  }
 
   function selectResult(item: SearchResult) {
     setFocus({ ...item.focus })
@@ -801,7 +917,7 @@ export default function AvisionMap({
           </button>
         </nav>
       </div>
-      <div className="avision-map-canvas">
+      <div ref={mapCanvas} className="avision-map-canvas">
         <MapContainer
           bounds={initialBounds}
           minZoom={10}
@@ -954,6 +1070,15 @@ export default function AvisionMap({
             />
           ))}
         </MapContainer>
+        <button
+          type="button"
+          className="avision-map-fit-reports"
+          onClick={fitReports}
+          disabled={visibleMarkers.length === 0}
+          title={visibleMarkers.length ? "Zoom to the currently filtered reports" : "No valid report locations to zoom to"}
+        >
+          Zoom to Reports
+        </button>
         {(tileError || dataError || roadError || cityError || gsuError) && (
           <div className="avision-map-warning" role="status">
             {tileError && (
